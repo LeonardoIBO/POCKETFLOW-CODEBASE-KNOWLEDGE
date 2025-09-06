@@ -19,6 +19,38 @@ def get_content_for_indices(files_data, indices):
     return content_map
 
 
+# Helper to robustly extract a YAML fenced block from LLM responses
+def extract_yaml_block(text):
+    """Return the first YAML block found in fenced code, else best-effort content.
+
+    Priority:
+    1) ```yaml ... ``` fenced block
+    2) ``` ... ``` generic fenced block
+    3) Entire text (last resort)
+    """
+    if not isinstance(text, str):
+        return ""
+    resp = text.strip()
+    # Prefer explicit yaml fence
+    if "```yaml" in resp:
+        try:
+            after = resp.split("```yaml", 1)[1]
+            inside = after.split("```", 1)[0]
+            return inside.strip()
+        except Exception:
+            pass
+    # Fallback: any fenced block
+    if "```" in resp:
+        try:
+            after = resp.split("```", 1)[1]
+            inside = after.split("```", 1)[0]
+            return inside.strip()
+        except Exception:
+            pass
+    # Last resort: whole text
+    return resp
+
+
 class FetchRepo(Node):
     def prep(self, shared):
         repo_url = shared.get("repo_url")
@@ -165,7 +197,7 @@ For each abstraction, provide:
 List of file indices and paths present in the context:
 {file_listing_for_prompt}
 
-Format the output as a YAML list of dictionaries:
+Format the output as a YAML list of dictionaries. Output ONLY a fenced YAML block starting with ```yaml and ending with ```.
 
 ```yaml
 - name: |
@@ -180,7 +212,7 @@ Format the output as a YAML list of dictionaries:
         response = call_llm(prompt, use_cache=(use_cache and self.cur_retry == 0))  # Use cache only if enabled and not retrying
 
         # --- Validation ---
-        yaml_str = response.strip().split("```yaml")[1].split("```")[0].strip()
+        yaml_str = extract_yaml_block(response)
         abstractions = yaml.safe_load(yaml_str)
 
         if not isinstance(abstractions, list):
@@ -344,7 +376,7 @@ Context (Abstractions, Descriptions, Code):
 
 IMPORTANT: Make sure EVERY abstraction is involved in at least ONE relationship (either as source or target). Each abstraction index must appear at least once across all relationships.
 
-Format the output as YAML:
+Format the output as YAML. Output ONLY a fenced YAML block starting with ```yaml and ending with ```.
 
 ```yaml
 summary: |
@@ -365,7 +397,7 @@ Now, provide the YAML output:
         response = call_llm(prompt, use_cache=(use_cache and self.cur_retry == 0)) # Use cache only if enabled and not retrying
 
         # --- Validation ---
-        yaml_str = response.strip().split("```yaml")[1].split("```")[0].strip()
+        yaml_str = extract_yaml_block(response)
         relationships_data = yaml.safe_load(yaml_str)
 
         if not isinstance(relationships_data, dict) or not all(
@@ -493,7 +525,7 @@ Context about relationships and project summary:
 If you are going to make a tutorial for ```` {project_name} ````, what is the best order to explain these abstractions, from first to last?
 Ideally, first explain those that are the most important or foundational, perhaps user-facing concepts or entry points. Then move to more detailed, lower-level implementation details or supporting concepts.
 
-Output the ordered list of abstraction indices, including the name in a comment for clarity. Use the format `idx # AbstractionName`.
+Output the ordered list of abstraction indices, including the name in a comment for clarity. Use the format `idx # AbstractionName`. Output ONLY a fenced YAML block starting with ```yaml and ending with ```.
 
 ```yaml
 - 2 # FoundationalConcept
@@ -507,7 +539,7 @@ Now, provide the YAML output:
         response = call_llm(prompt, use_cache=(use_cache and self.cur_retry == 0)) # Use cache only if enabled and not retrying
 
         # --- Validation ---
-        yaml_str = response.strip().split("```yaml")[1].split("```")[0].strip()
+        yaml_str = extract_yaml_block(response)
         ordered_indices_raw = yaml.safe_load(yaml_str)
 
         if not isinstance(ordered_indices_raw, list):
