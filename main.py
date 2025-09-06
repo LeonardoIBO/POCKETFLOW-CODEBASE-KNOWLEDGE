@@ -56,6 +56,8 @@ def main():
     parser.add_argument("--no-cache", action="store_true", help="Disable LLM response caching (default: caching enabled)")
     # Add max_abstraction_num parameter to control the number of abstractions
     parser.add_argument("--max-abstractions", type=int, default=10, help="Maximum number of abstractions to identify (default: 10)")
+    # Add audience-level parameter to control tone of documentation
+    parser.add_argument("--audience-level", choices=["beginner", "professional"], default="professional", help="Target audience level for documentation tone (default: professional)")
 
     args = parser.parse_args()
 
@@ -87,6 +89,9 @@ def main():
         
         # Add max_abstraction_num parameter
         "max_abstraction_num": args.max_abstractions,
+
+        # Add audience level for tone control
+        "audience_level": args.audience_level,
 
         # Outputs will be populated by the nodes
         "files": [],

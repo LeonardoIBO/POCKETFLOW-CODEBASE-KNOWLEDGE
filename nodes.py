@@ -88,6 +88,7 @@ class IdentifyAbstractions(Node):
         language = shared.get("language", "english")  # Get language
         use_cache = shared.get("use_cache", True)  # Get use_cache flag, default to True
         max_abstraction_num = shared.get("max_abstraction_num", 10)  # Get max_abstraction_num, default to 10
+        audience_level = shared.get("audience_level", "beginner")  # Tone control
 
         # Helper to create context from files, respecting limits (basic example)
         def create_llm_context(files_data):
@@ -113,6 +114,7 @@ class IdentifyAbstractions(Node):
             language,
             use_cache,
             max_abstraction_num,
+            audience_level,
         )  # Return all parameters
 
     def exec(self, prep_res):
@@ -124,6 +126,7 @@ class IdentifyAbstractions(Node):
             language,
             use_cache,
             max_abstraction_num,
+            audience_level,
         ) = prep_res  # Unpack all parameters
         print(f"Identifying abstractions using LLM...")
 
@@ -137,6 +140,13 @@ class IdentifyAbstractions(Node):
             name_lang_hint = f" (value in {language.capitalize()})"
             desc_lang_hint = f" (value in {language.capitalize()})"
 
+        # Minimal tone switch
+        tone_note = (
+            "Use simple explanations and analogies where helpful."
+            if audience_level == "beginner"
+            else "Use a neutral, objective technical tone. Avoid analogies; focus on implementation role."
+        )
+
         prompt = f"""
 For the project `{project_name}`:
 
@@ -145,10 +155,11 @@ Codebase Context:
 
 {language_instruction}Analyze the codebase context.
 Identify the top 5-{max_abstraction_num} core most important abstractions to help those new to the codebase.
+Tone: {tone_note}
 
 For each abstraction, provide:
 1. A concise `name`{name_lang_hint}.
-2. A beginner-friendly `description` explaining what it is with a simple analogy, in around 100 words{desc_lang_hint}.
+2. A {('beginner-friendly' if audience_level=='beginner' else 'technical, objective')} `description` in around 100 words{desc_lang_hint}.
 3. A list of relevant `file_indices` (integers) using the format `idx # path/comment`.
 
 List of file indices and paths present in the context:
@@ -161,16 +172,9 @@ Format the output as a YAML list of dictionaries:
     Query Processing{name_lang_hint}
   description: |
     Explains what the abstraction does.
-    It's like a central dispatcher routing requests.{desc_lang_hint}
   file_indices:
     - 0 # path/to/file1.py
     - 3 # path/to/related.py
-- name: |
-    Query Optimization{name_lang_hint}
-  description: |
-    Another core concept, similar to a blueprint for objects.{desc_lang_hint}
-  file_indices:
-    - 5 # path/to/another.js
 # ... up to {max_abstraction_num} abstractions
 ```"""
         response = call_llm(prompt, use_cache=(use_cache and self.cur_retry == 0))  # Use cache only if enabled and not retrying
@@ -246,6 +250,7 @@ class AnalyzeRelationships(Node):
         project_name = shared["project_name"]  # Get project name
         language = shared.get("language", "english")  # Get language
         use_cache = shared.get("use_cache", True)  # Get use_cache flag, default to True
+        audience_level = shared.get("audience_level", "beginner")  # Tone control
 
         # Get the actual number of abstractions directly
         num_abstractions = len(abstractions)
@@ -284,6 +289,7 @@ class AnalyzeRelationships(Node):
             project_name,
             language,
             use_cache,
+            audience_level,
         )  # Return use_cache
 
     def exec(self, prep_res):
@@ -294,6 +300,7 @@ class AnalyzeRelationships(Node):
             project_name,
             language,
             use_cache,
+            audience_level,
          ) = prep_res  # Unpack use_cache
         print(f"Analyzing relationships using LLM...")
 
@@ -306,6 +313,17 @@ class AnalyzeRelationships(Node):
             lang_hint = f" (in {language.capitalize()})"
             list_lang_note = f" (Names might be in {language.capitalize()})"  # Note for the input list
 
+        summary_style = (
+            "a few beginner-friendly sentences"
+            if audience_level == "beginner"
+            else "a neutral, technical paragraph (no casual language or analogies)"
+        )
+        formatting_hint = (
+            "Use markdown formatting with **bold** and *italic* text to highlight important concepts."
+            if audience_level == "beginner"
+            else "Avoid decorative formatting; keep it concise and objective."
+        )
+
         prompt = f"""
 Based on the following abstractions and relevant code snippets from the project `{project_name}`:
 
@@ -316,7 +334,7 @@ Context (Abstractions, Descriptions, Code):
 {context}
 
 {language_instruction}Please provide:
-1. A high-level `summary` of the project's main purpose and functionality in a few beginner-friendly sentences{lang_hint}. Use markdown formatting with **bold** and *italic* text to highlight important concepts.
+1. A high-level `summary` of the project's main purpose and functionality in {summary_style}{lang_hint}. {formatting_hint}
 2. A list (`relationships`) describing the key interactions between these abstractions. For each relationship, specify:
     - `from_abstraction`: Index of the source abstraction (e.g., `0 # AbstractionName1`)
     - `to_abstraction`: Index of the target abstraction (e.g., `1 # AbstractionName2`)
@@ -544,6 +562,7 @@ class WriteChapters(BatchNode):
         project_name = shared["project_name"]
         language = shared.get("language", "english")
         use_cache = shared.get("use_cache", True)  # Get use_cache flag, default to True
+        audience_level = shared.get("audience_level", "beginner")  # Tone control
 
         # Get already written chapters to provide context
         # We store them temporarily during the batch run, not in shared memory yet
@@ -616,6 +635,7 @@ class WriteChapters(BatchNode):
                         "next_chapter": next_chapter,  # Add next chapter info (uses potentially translated name)
                         "language": language,  # Add language for multi-language support
                         "use_cache": use_cache, # Pass use_cache flag
+                        "audience_level": audience_level,  # Pass tone control
                         # previous_chapters_summary will be added dynamically in exec
                     }
                 )
@@ -639,6 +659,7 @@ class WriteChapters(BatchNode):
         project_name = item.get("project_name")
         language = item.get("language", "english")
         use_cache = item.get("use_cache", True) # Read use_cache from item
+        audience_level = item.get("audience_level", "beginner")  # Read tone control
         print(f"Writing chapter {chapter_num} for: {abstraction_name} using LLM...")
 
         # Prepare file context string from the map
@@ -675,7 +696,41 @@ class WriteChapters(BatchNode):
             )
             tone_note = f" (appropriate for {lang_cap} readers)"
 
-        prompt = f"""
+        if audience_level == "professional":
+            prompt = f"""
+{language_instruction}Write a technical documentation chapter (in Markdown format) for the project `{project_name}` covering: "{abstraction_name}". This is Chapter {chapter_num}.
+
+Concept Details{concept_details_note}:
+- Name: {abstraction_name}
+- Description:
+{abstraction_description}
+
+Complete Tutorial Structure{structure_note}:
+{item["full_chapter_listing"]}
+
+Context from previous chapters{prev_summary_note}:
+{previous_chapters_summary if previous_chapters_summary else "This is the foundational component."}
+
+Relevant Code Snippets:
+{file_context_str if file_context_str else "No specific code snippets available."}
+
+Instructions for the chapter (Generate content in {language.capitalize()} unless specified otherwise):
+- Use heading: `# Chapter {chapter_num}: {abstraction_name}`
+- Maintain a neutral, objective technical tone; avoid analogies{tone_note}.
+- Focus on architecture and implementation details. Include:
+  - Architectural Overview (integration points and role)
+  - Implementation Details (key functions/classes/modules with reasoning)
+  - Configuration Options (env/config flags)
+  - Code Examples (production-oriented; include basic error handling)
+  - Performance Considerations (bottlenecks, complexity, scalability notes)
+  - Integration Patterns (how other components use this; link with chapter filenames)
+  - Troubleshooting (common failure modes)
+- Code blocks can exceed 10 lines if necessary; keep them relevant and self-contained.
+- When referencing other chapters, use links from the Complete Tutorial Structure above.
+- Output only the Markdown content.
+"""
+        else:
+            prompt = f"""
 {language_instruction}Write a very beginner-friendly tutorial chapter (in Markdown format) for the project `{project_name}` about the concept: "{abstraction_name}". This is Chapter {chapter_num}.
 
 Concept Details{concept_details_note}:
